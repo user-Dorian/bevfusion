@@ -20,7 +20,7 @@ def train_model(
     model,
     dataset,
     cfg,
-    distributed=False,
+    distributed=True,    # False
     validate=False,
     timestamp=None,
 ):
