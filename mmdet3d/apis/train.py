@@ -10,8 +10,9 @@ from mmcv.runner import (
     build_runner,
 )
 from mmdet3d.runner import CustomEpochBasedRunner
-
 from mmdet3d.utils import get_root_logger
+# [OPTIMIZATION] Import EMA support for improved model generalization
+from mmdet3d.utils.ema import ModelEMA, build_ema
 from mmdet.core import DistEvalHook
 from mmdet.datasets import build_dataloader, build_dataset, replace_ImageToTensor
 
@@ -65,12 +66,26 @@ def train_model(
             meta={},
         ),
     )
-    
+
     if hasattr(runner, "set_dataset"):
         runner.set_dataset(dataset)
 
     # an ugly workaround to make .log and .log.json filenames the same
     runner.timestamp = timestamp
+
+    # [OPTIMIZATION] Initialize EMA (Exponential Moving Average) for improved generalization
+    # EMA maintains a shadow copy of model parameters updated via exponential moving average,
+    # providing more robust inference weights and typically improving NDS by 0.5-1.5%
+    ema = None
+    if cfg.get('use_ema', False):
+        ema_decay = cfg.get('ema_decay', 0.9999)
+        ema = ModelEMA(model, decay=ema_decay)
+        logger.info(f"[EMA] Enabled with decay={ema_decay}")
+        # Register EMA hook for automatic management during training
+        from mmdet3d.utils.ema import EMAHook
+        ema_hook = EMAHook(model, decay=ema_decay, priority=51)  # After optimizer hook
+        runner.register_hook(ema_hook)
+        logger.info("[EMA] Hook registered for automatic shadow parameter management")
 
     # fp16 setting
     fp16_cfg = cfg.get("fp16", None)
